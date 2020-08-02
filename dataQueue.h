@@ -5,7 +5,7 @@
  * @Version: 
  * @Date: 2020-08-01 14:59:23
  * @LastEditors: Huang
- * @LastEditTime: 2020-08-01 19:14:01
+ * @LastEditTime: 2020-08-02 21:48:12
  */
 #ifndef __DATA_QUEUE_H
 #define __DATA_QUEUE_H
@@ -74,7 +74,6 @@ extern "C"
 
     int DPIsEmpty(DQNum_t num);
     int DQIsFull(DQNum_t num);
-
 #ifdef __cplusplus
 }
 #endif /* #ifdef __cplusplus */

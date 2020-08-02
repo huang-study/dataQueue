@@ -5,7 +5,7 @@
  * @Version: 
  * @Date: 2020-08-01 14:59:38
  * @LastEditors: Huang
- * @LastEditTime: 2020-08-01 19:24:42
+ * @LastEditTime: 2020-08-02 21:46:47
  */
 #ifdef __cplusplus
 extern "C"
@@ -54,6 +54,18 @@ extern "C"
         for (ListCnt = 0; ListCnt < __DATA_QUEUE_LIST_SIZE; ListCnt++)
         {
             Unit = &DQHandle.DQList[ListCnt];
+            if (DQBusy == Unit->Idle)
+            {
+                Unit->Stat = DQBusy;
+                DQHandle.Stat = DQBusy;
+                DQHandle.Idle = DQOk;
+                return 0;
+            }
+            else
+            {
+                Unit->Idle = DQBusy;
+            }
+
             if (NULL == Unit->pData)
             { // 找到空闲数据队列单元并初始化成功后返回
                 Unit->pData = DQHandle.DQBuf[__DATA_QUEUE_BUF_SIZE - DQHandle.DQBufFree];
@@ -61,11 +73,14 @@ extern "C"
                 Unit->DataSize = Size;
                 Unit->pTail = Unit->pHead[Unit->DataSize - 1];
                 Unit->DataCnt = 0;
+                Unit->Idle = DQOk;
+                Unit->Stat = DQOk;
                 DQHandle.DQBufFree -= Size;
                 DQHandle.Stat = DQOk;
                 DQHandle.Idle = DQOk;
                 return ListCnt + 1;
             }
+            Unit->Idle = DQOk;
         }
         DQHandle.Stat = DQErr;
         DQHandle.Idle = DQOk;
@@ -84,23 +99,22 @@ extern "C"
     {
         struct DQUnit *Unit = NULL;
         int pushCnt;
+
+        // 校验参数，参数正确则开始插入内容
+        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
+        {
+            DQHandle.Stat = DQErr;
+            return -1;
+        }
         // 检查状态
         if (DQBusy == DQHandle.Idle)
         {
             DQHandle.Stat = DQBusy;
             return -1;
         }
-        // 校验参数，参数正确则开始插入内容
-        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
-        {
-            DQHandle.Stat = DQErr;
-            DQHandle.Idle = DQOk;
-            return -1;
-        }
         else
         {
             DQHandle.Idle = DQBusy;
-            DQHandle.Stat = DQOk;
         }
         // 判断数据队列是否存在，存在则判断容量是否足够，足够则开始插入
         if (NULL == DQHandle.DQList[num].pData)
@@ -111,31 +125,38 @@ extern "C"
         }
         else
         {
+            DQHandle.Stat = DQOk;
+            DQHandle.Idle = DQOk;
+
             Unit = &DQHandle.DQList[num];
-            if ((size <= Unit->DataSize) && (size <= (Unit->DataSize - Unit->DataCnt)))
+            if (DQBusy != Unit->Idle)
             {
-                for (pushCnt = 0; pushCnt < size; pushCnt++)
+                Unit->Idle = DQBusy;
+                if ((size <= Unit->DataSize) && (size <= (Unit->DataSize - Unit->DataCnt)))
                 {
-                    if (Unit->pTail == Unit->pData[Unit->DataSize - 1])
+                    for (pushCnt = 0; pushCnt < size; pushCnt++)
                     {
-                        Unit->pTail = Unit->pData;
+                        if (Unit->pTail == Unit->pData[Unit->DataSize - 1])
+                        {
+                            Unit->pTail = Unit->pData;
+                        }
+                        else
+                        {
+                            Unit->pTail++;
+                        }
+                        *Unit->pTail = dat[pushCnt];
+                        Unit->DataCnt++;
                     }
-                    else
-                    {
-                        Unit->pTail++;
-                    }
-                    *Unit->pTail = dat[pushCnt];
-                    Unit->DataCnt++;
                 }
-                DQHandle.Stat = DQOk;
-                DQHandle.Idle = DQOk;
+                else
+                {
+                    Unit->Stat = DQFull;
+                    Unit->Idle = DQOk;
+                    return -1;
+                }
+                Unit->Stat = DQOk;
+                Unit->Idle = DQOk;
                 return 0;
-            }
-            else
-            {
-                DQHandle.Stat = DQFull;
-                DQHandle.Idle = DQOk;
-                return -1;
             }
         }
     }
@@ -152,12 +173,6 @@ extern "C"
     {
         struct DQUnit *Unit = NULL;
         int popCnt;
-        // 检查状态
-        if (DQBusy == DQHandle.Idle)
-        {
-            DQHandle.Stat = DQBusy;
-            return 0;
-        }
         // 校验参数，参数正确则开始插入内容
         if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
         {
@@ -165,10 +180,15 @@ extern "C"
             DQHandle.Idle = DQOk;
             return 0;
         }
+        // 检查状态
+        if (DQBusy == DQHandle.Idle)
+        {
+            DQHandle.Stat = DQBusy;
+            return 0;
+        }
         else
         {
             DQHandle.Idle = DQBusy;
-            DQHandle.Stat = DQOk;
         }
         // 判断数据队列是否存在，开始取出
         if (NULL == DQHandle.DQList[num].pData)
@@ -179,41 +199,48 @@ extern "C"
         }
         else
         {
+            DQHandle.Stat = DQOk;
+            DQHandle.Idle = DQOk;
+
             Unit = &DQHandle.DQList[num];
-            if (0 == Unit->DataCnt)
+            if (DQBusy != Unit->Idle)
             {
-                DQHandle.Stat = DQEmpty;
-                DQHandle.Idle = DQOk;
-                return 0;
-            }
-            else
-            {
-                for (popCnt = 0; popCnt < (size > Unit->DataSize ? Unit->DataSize : size); popCnt++)
+                Unit->Idle = DQBusy;
+                if (0 == Unit->DataCnt)
                 {
-                    if (Unit->pHead == Unit->pData[Unit->DataSize - 1])
-                    {
-                        Unit->pHead = Unit->pData;
-                    }
-                    else
-                    {
-                        Unit->pTail++;
-                    }
-                    *Unit->pTail = dat[popCnt];
-                    if (--Unit->DataCnt == 0)
-                    {
-                        DQHandle.Stat = DQOk;
-                        DQHandle.Idle = DQOk;
-                        return popCnt + 1;
-                    }
+                    Unit->Stat = DQEmpty;
+                    Unit->Idle = DQOk;
+                    return 0;
                 }
-                DQHandle.Stat = DQOk;
-                DQHandle.Idle = DQOk;
-                return popCnt;
+                else
+                {
+                    for (popCnt = 0; popCnt < (size > Unit->DataSize ? Unit->DataSize : size); popCnt++)
+                    {
+                        if (Unit->pHead == Unit->pData[Unit->DataSize - 1])
+                        {
+                            Unit->pHead = Unit->pData;
+                        }
+                        else
+                        {
+                            Unit->pTail++;
+                        }
+                        *Unit->pTail = dat[popCnt];
+                        if (--Unit->DataCnt == 0)
+                        {
+                            Unit->Stat = DQOk;
+                            Unit->Idle = DQOk;
+                            return popCnt + 1;
+                        }
+                    }
+                    Unit->Stat = DQOk;
+                    Unit->Idle = DQOk;
+                    return popCnt;
+                }
             }
         }
     }
 
-    int DPIsEmpty(DQNum_t num)
+    int DQIsEmpty(DQNum_t num)
     {
         struct DQUnit *Unit = NULL;
         // 判断数据队列是否存在

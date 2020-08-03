@@ -72,8 +72,11 @@ extern "C"
 
     int DQPopData(DQNum_t num, char *dat, unsigned int size);
 
-    int DPIsEmpty(DQNum_t num);
+    enum DQStatus DQGetDQSta(void);
+    enum DQStatus DQGetQueueSta(DQNum_t num);
+
     int DQIsFull(DQNum_t num);
+    int DQIsEmpty(DQNum_t num);
 #ifdef __cplusplus
 }
 #endif /* #ifdef __cplusplus */

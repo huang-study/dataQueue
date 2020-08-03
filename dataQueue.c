@@ -5,7 +5,7 @@
  * @Version: 
  * @Date: 2020-08-01 14:59:38
  * @LastEditors: Huang
- * @LastEditTime: 2020-08-02 21:46:47
+ * @LastEditTime: 2020-08-03 22:52:10
  */
 #ifdef __cplusplus
 extern "C"
@@ -16,6 +16,126 @@ extern "C"
 
     /* 数据列表控制块，管理数据队列 */
     struct DQHandleInfo DQHandle = {.DQBuf = {0}, .DQBufFree = __DATA_QUEUE_BUF_SIZE, .DQCnt = 0, .DQList = {0}, .Idle = DQOk, .Stat = DQOk};
+
+    /**
+     * @description: 获取数据列表控制块互斥量
+     * @param
+     * @return 0：成功
+     *         1：失败
+     */
+    int _DQGetDQIdle(void)
+    {
+        if (DQBusy == DQHandle.Idle)
+        {
+            return 1;
+        }
+        else
+        {
+            DQHandle.Idle = DQBusy;
+            return 0;
+        }
+    }
+    /**
+     * @description: 释放数据列表控制块互斥量，无论是否占用都释放
+     * @param
+     * @return 
+     */
+    void _DQFreeDQIdle(void)
+    {
+        DQHandle.Idle = DQBusy;
+    }
+    /**
+     * @description: 判断数据列表序号是否有效
+     * @param num 数据列表序号
+     * @return 0：有效
+     *         1：无效
+     */
+    int _DQJudgeDQNum(DQNum_t num)
+    {
+        // 校验参数，参数正确则开始插入内容
+        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num))
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    /**
+     * @description: 获取数据列表互斥量
+     * @param 数据列表序号
+     * @return 0：成功
+     *         1：失败
+     */
+    int _DQGetQueueIdle(DQNum_t num)
+    {
+        if (1 == _DQJudgeDQNum(num))
+        {
+            return 1;
+        }
+        else
+        {
+            if (DQBusy == DQHandle.DQList[num].Idle)
+            {
+                DQHandle.Stat = DQBusy;
+                return 1;
+            }
+            else
+            {
+                DQHandle.DQList[num].Idle = DQBusy;
+                return 0;
+            }
+        }
+    }
+    /**
+     * @description: 释放数据列表互斥量
+     * @param num 数据列表序号
+     * @return 0：成功
+     *         1：失败
+     */
+    int _DQFreeQueueIdle(DQNum_t num)
+    {
+        if (1 == _DQJudgeDQNum(num))
+        {
+            return 1;
+        }
+        else
+        {
+            DQHandle.DQList[num].Idle = DQOk;
+            return 0;
+        }
+    }
+    /**
+     * @description: 判断数据列表状态
+     * @param num 数据列表序号
+     * @return 0:无效
+     *         1：有效
+     *        -1：错误
+     */
+    int _DQJudgeQueueIsNULL(DQNum_t num)
+    {
+        if (1 == _DQJudgeDQNum(num))
+        {
+            return -1;
+        }
+        else
+        {
+            if (0 == _DQGetDQIdle())
+            {
+                if (NULL == DQHandle.DQList[num].pData)
+                {
+                    _DQFreeDQIdle();
+                    return 0;
+                }
+                else
+                {
+                    _DQFreeDQIdle();
+                    return 1;
+                }
+            }
+        }
+    }
     /**
      * @description: 创建一个数据队列，失败操作结果通过 DQGetStatus 获取
      * @author: Huang
@@ -100,12 +220,6 @@ extern "C"
         struct DQUnit *Unit = NULL;
         int pushCnt;
 
-        // 校验参数，参数正确则开始插入内容
-        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
-        {
-            DQHandle.Stat = DQErr;
-            return -1;
-        }
         // 检查状态
         if (DQBusy == DQHandle.Idle)
         {
@@ -115,6 +229,13 @@ extern "C"
         else
         {
             DQHandle.Idle = DQBusy;
+        }
+        // 校验参数，参数正确则开始插入内容
+        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
+        {
+            DQHandle.Stat = DQErr;
+            DQHandle.Idle = DQOk;
+            return -1;
         }
         // 判断数据队列是否存在，存在则判断容量是否足够，足够则开始插入
         if (NULL == DQHandle.DQList[num].pData)
@@ -173,13 +294,6 @@ extern "C"
     {
         struct DQUnit *Unit = NULL;
         int popCnt;
-        // 校验参数，参数正确则开始插入内容
-        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
-        {
-            DQHandle.Stat = DQErr;
-            DQHandle.Idle = DQOk;
-            return 0;
-        }
         // 检查状态
         if (DQBusy == DQHandle.Idle)
         {
@@ -189,6 +303,13 @@ extern "C"
         else
         {
             DQHandle.Idle = DQBusy;
+        }
+        // 校验参数，参数正确则开始插入内容
+        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num) || (NULL == dat) || (0 == size))
+        {
+            DQHandle.Stat = DQErr;
+            DQHandle.Idle = DQOk;
+            return 0;
         }
         // 判断数据队列是否存在，开始取出
         if (NULL == DQHandle.DQList[num].pData)
@@ -239,10 +360,37 @@ extern "C"
             }
         }
     }
-
-    int DQIsEmpty(DQNum_t num)
+    enum DQStatus DQGetDQSta(void)
+    {
+        if (DQOk == DQHandle.Idle)
+        {
+            return DQHandle.Stat;
+        }
+        else
+        {
+            return DQBusy;
+        }
+    }
+    enum DQStatus DQGetQueueSta(DQNum_t num)
     {
         struct DQUnit *Unit = NULL;
+        // 检查状态
+        if (DQBusy == DQHandle.Idle)
+        {
+            DQHandle.Stat = DQBusy;
+            return DQBusy;
+        }
+        else
+        {
+            DQHandle.Idle = DQBusy;
+        }
+        // 校验参数，参数正确则开始插入内容
+        if ((0 == num) || (__DATA_QUEUE_LIST_SIZE <= num))
+        {
+            DQHandle.Stat = DQErr;
+            DQHandle.Idle = DQOk;
+            return DQErr;
+        }
         // 判断数据队列是否存在
         Unit = &DQHandle.DQList[num];
         if (NULL == Unit->pData)
@@ -251,20 +399,66 @@ extern "C"
             DQHandle.Idle = DQOk;
             return -1;
         }
-        return (Unit->DataCnt == 0 ? 1 : 0);
+        if (DQOk == DQHandle.Idle)
+        {
+            return DQHandle.Stat;
+        }
+        else
+        {
+            return DQBusy;
+        }
+        /**
+     * @description: 
+     * @param num 数据列表序号
+     * @return -1：错误
+     *          0：数据列表空
+     *          1：数据列表满
+     */
     }
     int DQIsFull(DQNum_t num)
     {
-        struct DQUnit *Unit = NULL;
-        // 判断数据队列是否存在
-        Unit = &DQHandle.DQList[num];
-        if (NULL == Unit->pData)
+        enum DQStatus staTemp;
+        int ret;
+        staTemp = DQGetQueueSta(num);
+        if (DQErr == staTemp)
         {
-            DQHandle.Stat = DQErr;
-            DQHandle.Idle = DQOk;
             return -1;
         }
-        return (Unit->DataCnt == Unit->DataSize ? 1 : 0);
+        if (DQBusy != staTemp)
+        {
+            DQHandle.DQList[num].Idle = DQBusy;
+            ret = DQHandle.DQList[num].DataCnt >= DQHandle.DQList[num].DataSize ? 1 : 0;
+            DQHandle.DQList[num].Stat = DQOk;
+            DQHandle.DQList[num].Idle = DQOk;
+            return ret;
+        }
+        else
+        {
+            return -1;
+        }
+    }
+    int DQIsEmpty(DQNum_t num)
+    {
+
+        enum DQStatus staTemp;
+        int ret;
+        staTemp = DQGetQueueSta(num);
+        if (DQErr == staTemp)
+        {
+            return -1;
+        }
+        if (DQBusy != staTemp)
+        {
+            DQHandle.DQList[num].Idle = DQBusy;
+            ret = DQHandle.DQList[num].DataCnt == 0 ? 1 : 0;
+            DQHandle.DQList[num].Stat = DQOk;
+            DQHandle.DQList[num].Idle = DQOk;
+            return ret;
+        }
+        else
+        {
+            return -1;
+        }
     }
 #ifdef __cplusplus
 }
